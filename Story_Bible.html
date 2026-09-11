@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Story Bible</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@400;600;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  /* ground — blue-shifted, snow at dusk */
+  --ink:#0b0d13; --ink2:#111520; --ink3:#171c29; --ink4:#1f2534;
+  --rule:#242b3b; --rule2:#323a4d;
+  /* type */
+  --bone:#e8e6df; --ash:#98a0b0; --faint:#5d6577; --ghost:#333c4e;
+  /* the two silvers */
+  --cold:#8fa3b8;   /* Tomoe — structure, cold states */
+  --warm:#d9bc8f;   /* Akari — locked, real, warm */
+  --warm-dim:#8a7f6b;
+  --alarm:#b06a5e;
+  --disp:"Shippori Mincho B1",Georgia,serif;
+  --body:"Zen Kaku Gothic New",-apple-system,BlinkMacSystemFont,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{-webkit-text-size-adjust:100%}
+body{background:var(--ink);color:var(--bone);font-family:var(--body);font-size:15px;line-height:1.6;min-height:100vh;padding-bottom:var(--sb)}
+button,input,textarea,select{font-family:inherit;font-size:inherit;color:inherit}
+::selection{background:var(--warm);color:var(--ink)}
+:focus-visible{outline:2px solid var(--warm);outline-offset:2px}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ── chrome ───────────────────────────── */
+header{position:sticky;top:0;z-index:30;background:linear-gradient(180deg,var(--ink) 78%,transparent);padding:calc(14px + var(--st)) 18px 0}
+.hrow{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.brand{font-family:var(--disp);font-size:19px;letter-spacing:.08em;font-weight:600}
+.brand span{color:var(--faint);font-weight:400}
+#projSel{background:none;border:none;border-bottom:1px solid var(--rule);color:var(--ash);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:2px 16px 3px 2px;max-width:200px;cursor:pointer;
+  appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--faint) 50%),linear-gradient(135deg,var(--faint) 50%,transparent 50%);
+  background-position:calc(100% - 8px) 8px,calc(100% - 4px) 8px;background-size:4px 4px;background-repeat:no-repeat}
+.hact{margin-left:auto;display:flex;gap:14px;align-items:center}
+#status{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--ghost)}
+#status.ok{color:var(--cold)} #status.busy{color:var(--warm)} #status.err{color:var(--alarm)}
+.tbtn{background:none;border:none;color:var(--faint);font-size:12px;cursor:pointer;padding:2px 0;border-bottom:1px solid transparent}
+.tbtn:hover{color:var(--bone);border-bottom-color:var(--rule2)}
+
+/* progress spine — the saturation meter, made literal */
+#spine{display:flex;gap:2px;height:2px;margin-top:12px}
+#spine i{flex:1;background:var(--ghost);transition:background .4s}
+#spine i.locked{background:var(--warm)}
+#spine i.draft{background:var(--warm-dim)}
+
+nav{display:flex;gap:22px;margin-top:12px;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--rule)}
+nav::-webkit-scrollbar{display:none}
+nav button{background:none;border:none;color:var(--faint);padding:9px 0 11px;cursor:pointer;white-space:nowrap;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;position:relative}
+nav button.on{color:var(--bone)}
+nav button.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;background:var(--warm)}
+nav button .ct{color:var(--ghost);margin-left:5px;font-size:9.5px}
+
+main{padding:22px 18px 60px;max-width:1360px;margin:0 auto}
+
+/* ── shared bits ──────────────────────── */
+.lede{font-family:var(--disp);font-size:14.5px;color:var(--ash);line-height:1.7;max-width:62ch;margin-bottom:22px}
+.bar{display:flex;gap:10px;margin-bottom:20px;align-items:center;flex-wrap:wrap}
+#search{flex:1;min-width:150px;background:none;border:none;border-bottom:1px solid var(--rule);color:var(--bone);
+  padding:8px 2px;font-size:14px}
+#search::placeholder{color:var(--ghost)}
+#search:focus{outline:none;border-bottom-color:var(--warm)}
+.mini{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);
+  background:none;border:1px solid var(--rule);border-radius:2px;padding:6px 11px;cursor:pointer}
+.mini:hover{border-color:var(--rule2);color:var(--bone)}
+.mini.go{border-color:var(--warm);color:var(--warm)}
+.mini.kill{border-color:#4a2c2c;color:var(--alarm)}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.chip{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;background:none;
+  border:1px solid var(--rule);color:var(--faint);border-radius:2px;padding:5px 10px;cursor:pointer}
+.chip.on{border-color:var(--warm);color:var(--warm)}
+.eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+.empty{font-family:var(--disp);color:var(--ghost);font-size:15px;padding:44px 0;text-align:center}
+
+/* ── index rows (editorial, not cards) ── */
+.rows{border-top:1px solid var(--rule)}
+.row{display:grid;grid-template-columns:auto 1fr;gap:14px;padding:15px 0 16px;border-bottom:1px solid var(--rule);
+  cursor:pointer;align-items:start;transition:background .12s}
+.row:hover{background:var(--ink2)}
+.tick{width:3px;align-self:stretch;background:var(--ghost);border-radius:2px;min-height:34px}
+.rtitle{font-family:var(--disp);font-size:17px;font-weight:600;letter-spacing:.01em;line-height:1.35}
+.rmeta{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin-top:4px}
+.rbody{color:var(--ash);font-size:13.5px;line-height:1.6;margin-top:7px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;max-width:82ch}
+.grey{filter:saturate(.15)}
+
+/* ── timeline ─────────────────────────── */
+.scroll{overflow-x:auto;padding-bottom:18px;margin:0 -18px;padding-left:18px;padding-right:18px}
+.scroll::-webkit-scrollbar{height:8px}
+.scroll::-webkit-scrollbar-track{background:var(--ink2)}
+.scroll::-webkit-scrollbar-thumb{background:var(--rule2);border-radius:4px}
+.tl{min-width:1080px}
+.tg{display:grid;gap:6px}
+.ehd{position:sticky;top:0;z-index:6;background:var(--ink);padding:2px 0 12px}
+.ecap{font-family:var(--disp);font-size:13px;font-weight:600;line-height:1.3}
+.edat{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--faint);margin-top:3px}
+.ecomp{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;color:var(--warm);margin-top:1px}
+.lane{margin-bottom:6px}
+.lcap{position:sticky;left:0;z-index:5;background:var(--ink);padding:9px 10px 0 0}
+.lname{display:flex;align-items:center;gap:7px;font-family:var(--disp);font-size:13.5px;font-weight:600}
+.lsub{font-size:10.5px;color:var(--faint);margin-left:15px;line-height:1.35}
+.cell{background:var(--ink2);border:1px solid var(--rule);border-radius:3px;padding:7px;min-height:52px;
+  position:relative;display:flex;flex-direction:column;gap:4px}
+.life{position:absolute;left:0;right:0;top:0;height:2px}
+.ev{text-align:left;background:none;border:none;border-left:2px solid var(--ghost);border-radius:0;
+  padding:3px 0 3px 8px;cursor:pointer;font-size:11.5px;line-height:1.35;width:100%;color:var(--ash)}
+.ev:hover{color:var(--bone)}
+.ev.locked{border-left-color:var(--warm);color:var(--bone)}
+.ev.draft{border-left-color:var(--warm-dim)}
+.plus{position:absolute;right:5px;bottom:3px;background:none;border:none;color:var(--ghost);cursor:pointer;
+  font-size:15px;line-height:1;padding:2px;opacity:0;transition:opacity .15s}
+.cell:hover .plus{opacity:1}
+.plus:hover{color:var(--warm)}
+.dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+
+/* ── consistency ──────────────────────── */
+.flag{border-left:2px solid var(--alarm);padding:12px 0 13px 15px;margin-bottom:2px;border-bottom:1px solid var(--rule)}
+.flag.warn{border-left-color:var(--warm)}
+.flag.note{border-left-color:var(--ghost)}
+.flag h4{font-family:var(--disp);font-size:15px;font-weight:600;margin-bottom:3px}
+.flag p{color:var(--ash);font-size:13.5px;line-height:1.55}
+.flag .at{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--ghost);margin-top:6px}
+.secthd{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;margin:26px 0 10px}
+
+/* ── panel (read + edit) ──────────────── */
+#panel{position:fixed;inset:0 0 0 auto;width:min(560px,100%);background:var(--ink2);border-left:1px solid var(--rule);
+  overflow-y:auto;z-index:60;box-shadow:-24px 0 60px rgba(0,0,0,.6);display:none;
+  padding:calc(18px + var(--st)) 22px calc(40px + var(--sb))}
+#panel.open{display:block}
+.phd{display:flex;justify-content:space-between;align-items:center;gap:12px;position:sticky;top:calc(-1px + var(--st));
+  background:var(--ink2);padding:4px 0 14px;margin-bottom:6px;z-index:2}
+.ptitle{font-family:var(--disp);font-size:26px;font-weight:700;line-height:1.2;letter-spacing:.01em;margin-bottom:6px}
+.psub{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:20px}
+.prose{font-size:14.5px;line-height:1.75;color:#d2d0ca;white-space:pre-wrap;max-width:64ch}
+.prose+.prose{margin-top:14px}
+.fld{border-top:1px solid var(--rule);padding:16px 0 4px}
+.fld dt{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--warm);margin-bottom:7px}
+.fld dd{font-size:14px;line-height:1.72;color:#cfcdc7;white-space:pre-wrap}
+.lk{color:var(--warm);border-bottom:1px solid rgba(217,188,143,.3);cursor:pointer}
+.lk.dead{color:var(--alarm);border-bottom-style:dotted}
+.beat{border-top:1px solid var(--rule);padding:15px 0}
+.beat .bl{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.beat .bt{font-family:var(--disp);font-size:15.5px;font-weight:600;margin:3px 0 7px}
+.beat .ba{font-size:14px;line-height:1.7;color:#cfcdc7;white-space:pre-wrap}
+.beat .bn{font-size:13px;line-height:1.65;color:var(--ash);white-space:pre-wrap;margin-top:9px;
+  border-left:2px solid var(--rule2);padding-left:11px}
+
+/* edit mode */
+label.f{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--faint);margin:16px 0 6px}
+.inp{width:100%;background:var(--ink);border:1px solid var(--rule);color:var(--bone);border-radius:3px;
+  padding:10px 12px;font-size:14px;line-height:1.6}
+.inp:focus{outline:none;border-color:var(--warm)}
+textarea.inp{resize:vertical;min-height:100px}
+.two{display:flex;gap:10px}.two>div{flex:1}
+.fr{display:flex;gap:8px;margin-bottom:9px;align-items:flex-start}
+.x{background:none;border:1px solid var(--rule);color:var(--ghost);border-radius:3px;padding:8px 10px;cursor:pointer;flex-shrink:0}
+.x:hover{color:var(--alarm);border-color:#4a2c2c}
+.lifegrid{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.lifegrid span{flex:1;font-size:12.5px;color:var(--ash)}
+.lifegrid select{background:var(--ink);border:1px solid var(--rule);color:var(--bone);border-radius:3px;padding:5px 8px;font-size:12px}
+
+@media(max-width:680px){
+  main{padding:18px 15px 50px}
+  header{padding-left:15px;padding-right:15px}
+  .ptitle{font-size:22px}
+  #panel{padding-left:17px;padding-right:17px}
+  .row{grid-template-columns:auto 1fr}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hrow">
+    <div class="brand">Story Bible</div>
+    <select id="projSel" onchange="switchProject(this.value)"></select>
+    <div class="hact">
+      <span id="status">connecting</span>
+      <button class="tbtn" onclick="newProject()">New project</button>
+      <button class="tbtn" onclick="importAll()">Import</button>
+      <button class="tbtn" onclick="exportAll()">Export</button>
+    </div>
+  </div>
+  <div id="spine"></div>
+  <nav id="nav"></nav>
+</header>
+
+<main id="main"></main>
+<div id="panel"></div>
+
+<script>
+const SUPA_URL="https://dwdvbkloszhiymyidhmh.supabase.co";
+const SUPA_KEY="sb_publishable_fHhjfRXMIsrWM4RzP3jDog_sFNB3hIS";
+let db=null;
+try{ db=supabase.createClient(SUPA_URL,SUPA_KEY); }
+catch(e){ console.error("supabase client failed",e); }
+
+let checkCount="";
+let S={projects:[],project:null,entities:[],entries:[],events:[],eras:[],scenes:[],
+       tab:"timeline",search:"",cat:null,sel:null,editing:false,laneFilter:null};
+
+const STATUS={locked:{l:"locked"},draft:{l:"draft"},open:{l:"open"}};
+const TYPES=["person","place","faction","object","concept"];
+const LIFE_STATES=["none","alive","dead","stasis"];
+
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const uid=()=>crypto.randomUUID();
+function setStatus(m,c){const e=document.getElementById("status");e.textContent=m;e.className=c||"";}
+
+/* ── data layer ───────────────────────── */
+async function boot(){
+  if(!db){
+    setStatus("no connection","err");
+    document.getElementById("main").innerHTML=
+      `<p class="lede">Couldn't reach the database library. Check that you're online and reload — the app loads Supabase from a CDN on startup.</p>`;
+    return;
+  }
+  setStatus("connecting","busy");
+  try{
+    const{data,error}=await db.from("projects").select("*").order("created_at");
+    if(error)throw error;
+    S.projects=data||[];
+    if(!S.projects.length)S.projects=[await createProject("Untitled","")];
+    const saved=localStorage.getItem("sb_project");
+    S.project=S.projects.find(p=>p.id===saved)||S.projects[0];
+    await loadProject();
+  }catch(e){console.error(e);setStatus("offline","err");render();}
+}
+async function createProject(name,subtitle){
+  const{data,error}=await db.from("projects").insert({name,subtitle}).select().single();
+  if(error)throw error;return data;
+}
+async function loadProject(){
+  if(!S.project)return;
+  localStorage.setItem("sb_project",S.project.id);
+  setStatus("loading","busy");
+  const pid=S.project.id;
+  const[en,er,ev,ea,sc]=await Promise.all([
+    db.from("entities").select("*").eq("project_id",pid).order("sort"),
+    db.from("entries").select("*").eq("project_id",pid).order("sort"),
+    db.from("events").select("*").eq("project_id",pid).order("sort"),
+    db.from("eras").select("*").eq("project_id",pid).order("sort"),
+    db.from("scenes").select("*").eq("project_id",pid).order("sort")]);
+  S.entities=en.data||[];S.entries=er.data||[];S.events=ev.data||[];S.eras=ea.data||[];S.scenes=sc.data||[];
+  setStatus("synced","ok");render();
+}
+async function save(t,row){
+  setStatus("saving","busy");
+  try{const{data,error}=await db.from(t).upsert(row).select().single();
+    if(error)throw error;setStatus("synced","ok");return data;
+  }catch(e){console.error(e);setStatus("save failed","err");return null;}
+}
+async function remove(t,id){
+  setStatus("deleting","busy");
+  try{const{error}=await db.from(t).delete().eq("id",id);
+    if(error)throw error;setStatus("synced","ok");return true;
+  }catch(e){console.error(e);setStatus("delete failed","err");return false;}
+}
+async function switchProject(id){S.project=S.projects.find(p=>p.id===id);closePanel();await loadProject();}
+async function newProject(){
+  const name=prompt("Project name?");if(!name)return;
+  const sub=prompt("Subtitle? (optional)")||"";
+  try{const p=await createProject(name,sub);S.projects.push(p);S.project=p;await loadProject();}
+  catch(e){alert("Couldn't create that project.");}
+}
+
+/* ── link resolution ──────────────────── */
+function nameIndex(){
+  const ix={};
+  S.entities.forEach(e=>{if(!e||!e.name)return;ix[String(e.name).toLowerCase()]=e;(e.aliases||[]).forEach(a=>{if(a)ix[String(a).toLowerCase()]=e;});});
+  return ix;
+}
+function linkify(text){
+  const ix=nameIndex();
+  return esc(text).replace(/\[\[([^\]]+)\]\]/g,(_,nm)=>{
+    const hit=ix[nm.trim().toLowerCase()];
+    return hit?`<span class="lk" onclick="event.stopPropagation();openEntity('${hit.id}')">${esc(nm)}</span>`
+              :`<span class="lk dead">${esc(nm)}</span>`;
+  });
+}
+
+/* ── render ───────────────────────────── */
+const TABS=[["timeline","Timeline",()=>S.events.length],["entities","Cast",()=>S.entities.length],
+            ["entries","Lore",()=>S.entries.length],["scenes","Scenes",()=>S.scenes.length],
+            ["checks","Checks",()=>checkCount]];
+
+function render(){
+  try{ checkCount=runChecks().filter(f=>f.lvl!=="note").length||""; }catch(e){ checkCount=""; }
+  document.getElementById("projSel").innerHTML=
+    S.projects.map(p=>`<option value="${p.id}"${S.project&&p.id===S.project.id?" selected":""}>${esc(p.name)}</option>`).join("");
+
+  // progress spine — every locked thing lights up
+  const all=[...S.events,...S.scenes];
+  document.getElementById("spine").innerHTML=
+    all.length?all.map(x=>`<i class="${x.status==="locked"?"locked":x.status==="draft"?"draft":""}"></i>`).join("")
+              :`<i></i>`;
+
+  document.getElementById("nav").innerHTML=TABS.map(([k,l,c])=>{
+    const n=c();return `<button class="${S.tab===k?"on":""}" onclick="go('${k}')">${l}${n?`<span class="ct">${n}</span>`:""}</button>`;
+  }).join("");
+
+  const m=document.getElementById("main");
+  try{
+    m.innerHTML={timeline:viewTimeline,entities:viewEntities,entries:viewEntries,
+                 scenes:viewScenes,checks:viewChecks}[S.tab]();
+  }catch(err){
+    console.error("render failed",err);
+    m.innerHTML=`<p class="lede">Something in this view failed to draw.</p>
+      <div class="flag"><h4>${esc(err.message||"Unknown error")}</h4>
+      <p>The data is safe — this is a display problem. Try another tab, or Export to get a copy of everything.</p>
+      <div class="at">${esc(S.tab)}</div></div>`;
+  }
+}
+function go(t){S.tab=t;S.search="";S.cat=null;closePanel();render();window.scrollTo(0,0);}
+function setSearch(v){
+  S.search=v.toLowerCase();render();
+  const el=document.getElementById("search");
+  if(el){el.focus();el.setSelectionRange(el.value.length,el.value.length);}
+}
+
+/* TIMELINE */
+function lifeCss(state,color){
+  if(state==="dead")   return `background:repeating-linear-gradient(90deg,${color}22 0 5px,transparent 5px 11px)`;
+  if(state==="stasis") return `background:repeating-linear-gradient(90deg,${color}66 0 3px,transparent 3px 8px)`;
+  if(state==="alive")  return `background:${color}`;
+  return "background:transparent";
+}
+function viewTimeline(){
+  if(!S.eras.length)
+    return `<p class="lede">Eras are the columns your whole story hangs from. Start with one.</p>
+            <button class="mini go" onclick="editEra(null)">Add the first era</button>`;
+  const lanes=S.entities.filter(e=>Object.keys(e.lifespan||{}).length||S.events.some(v=>v.lane===e.id));
+  const shown=S.laneFilter?lanes.filter(l=>l.id===S.laneFilter):lanes;
+  const cols=`124px repeat(${S.eras.length},1fr)`;
+  return `
+  <p class="lede">Weighted by story, not by clock — eighteen months and two centuries take the same room.</p>
+  <div class="chips">
+    <button class="chip ${!S.laneFilter?"on":""}" onclick="S.laneFilter=null;render()">All tracks</button>
+    ${lanes.map(l=>`<button class="chip ${S.laneFilter===l.id?"on":""}" onclick="S.laneFilter='${l.id}';render()">${esc(l.name)}</button>`).join("")}
+    <button class="chip" onclick="editEra(null)">+ era</button>
+  </div>
+  <div class="scroll"><div class="tl">
+    <div class="tg ehd" style="grid-template-columns:${cols}"><div></div>
+      ${S.eras.map(e=>`<div style="border-top:2px solid ${e.color||"#4a5060"};padding-top:9px;cursor:pointer" onclick="editEra('${e.id}')">
+        <div class="ecap">${esc(e.name)}</div>
+        <div class="edat">${esc(e.range_label||"")}</div>
+        <div class="${e.compressed?"ecomp":"edat"}">${e.compressed?"⟨ "+esc(e.duration||"")+" compressed ⟩":esc(e.duration||"")}</div>
+      </div>`).join("")}
+    </div>
+    ${shown.map(lane=>`
+      <div class="tg lane" style="grid-template-columns:${cols}">
+        <div class="lcap">
+          <div class="lname"><span class="dot" style="background:${lane.color||"#5d6577"}"></span>${esc(lane.name)}</div>
+          <div class="lsub">${esc(lane.summary||"")}</div>
+        </div>
+        ${S.eras.map(era=>{
+          const evs=S.events.filter(v=>v.lane===lane.id&&v.era===era.key);
+          const st=(lane.lifespan||{})[era.key]||"none";
+          return `<div class="cell">
+            <div class="life" style="${lifeCss(st,lane.color||"#5d6577")}"></div>
+            ${st==="none"&&!evs.length?`<div style="font-size:11px;color:var(--ghost);margin-top:4px">·</div>`:""}
+            ${evs.map(v=>`<button class="ev ${v.status}" onclick="openEvent('${v.id}')">${esc(v.title)}</button>`).join("")}
+            <button class="plus" onclick="event.stopPropagation();editEvent(null,'${lane.id}','${era.key}')" aria-label="Add event">+</button>
+          </div>`;}).join("")}
+      </div>`).join("")}
+  </div></div>`;
+}
+
+/* CAST */
+function viewEntities(){
+  const q=S.search;
+  const list=S.entities.filter(e=>!q||e.name.toLowerCase().includes(q)||
+    (e.summary||"").toLowerCase().includes(q)||(e.aliases||[]).some(a=>a.toLowerCase().includes(q))||
+    (e.fields||[]).some(f=>(f.value||"").toLowerCase().includes(q)));
+  return `
+  <div class="bar">
+    <input id="search" placeholder="Search the cast…" value="${esc(S.search)}" oninput="setSearch(this.value)">
+    <button class="mini go" onclick="editEntity(null)">New</button>
+  </div>
+  ${list.length?`<div class="rows">${list.map(e=>{
+    const n=(e.fields||[]).length;
+    return `<div class="row ${n?"":"grey"}" onclick="openEntity('${e.id}')">
+      <div class="tick" style="background:${n?(e.color||"var(--warm)"):"var(--ghost)"}"></div>
+      <div>
+        <div class="rtitle">${esc(e.name)}</div>
+        <div class="rmeta">${esc(e.type||"")}${(e.aliases||[]).length?" · "+esc(e.aliases.join(" · ")):""}${n?` · ${n} field${n>1?"s":""}`:""}</div>
+        ${e.summary?`<div class="rbody">${esc(e.summary)}</div>`:""}
+      </div></div>`;}).join("")}</div>`
+  :`<div class="empty">No one here yet.</div>`}`;
+}
+
+/* LORE */
+function viewEntries(){
+  const q=S.search;
+  let list=S.entries.filter(e=>!q||e.title.toLowerCase().includes(q)||
+    (e.body||"").toLowerCase().includes(q)||(e.tag||"").toLowerCase().includes(q));
+  if(S.cat)list=list.filter(e=>e.category===S.cat);
+  const cats=[...new Set(S.entries.map(e=>e.category).filter(Boolean))].sort();
+  return `
+  <div class="bar">
+    <input id="search" placeholder="Search the lore…" value="${esc(S.search)}" oninput="setSearch(this.value)">
+    <button class="mini go" onclick="editEntry(null)">New</button>
+  </div>
+  ${cats.length?`<div class="chips">
+    <button class="chip ${!S.cat?"on":""}" onclick="S.cat=null;render()">All</button>
+    ${cats.map(c=>`<button class="chip ${S.cat===c?"on":""}" onclick="S.cat='${esc(c)}';render()">${esc(c)}</button>`).join("")}
+  </div>`:""}
+  ${list.length?`<div class="rows">${list.map(e=>`
+    <div class="row" onclick="openEntry('${e.id}')">
+      <div class="tick" style="background:var(--warm)"></div>
+      <div>
+        <div class="rtitle">${esc(e.title)}</div>
+        <div class="rmeta">${esc(e.category||"")}${e.tag?" · "+esc(e.tag):""}</div>
+        <div class="rbody">${esc(e.body||"")}</div>
+      </div></div>`).join("")}</div>`
+  :`<div class="empty">Nothing written here yet.</div>`}`;
+}
+
+/* SCENES */
+function viewScenes(){
+  const q=S.search;
+  const list=S.scenes.filter(s=>!q||s.title.toLowerCase().includes(q)||
+    (s.chapter||"").toLowerCase().includes(q)||(s.sub||"").toLowerCase().includes(q));
+  return `
+  <div class="bar">
+    <input id="search" placeholder="Search scenes…" value="${esc(S.search)}" oninput="setSearch(this.value)">
+    <button class="mini go" onclick="editScene(null)">New</button>
+  </div>
+  ${list.length?`<div class="rows">${list.map(s=>{
+    const n=(s.beats||[]).length;
+    return `<div class="row ${s.status==="locked"?"":"grey"}" onclick="openScene('${s.id}')">
+      <div class="tick" style="background:${s.status==="locked"?"var(--warm)":s.status==="draft"?"var(--warm-dim)":"var(--ghost)"}"></div>
+      <div>
+        <div class="rtitle">${esc(s.title)}</div>
+        <div class="rmeta">${esc(s.chapter||"")} · ${n} beat${n===1?"":"s"} · ${esc(s.status||"")}</div>
+        ${s.sub?`<div class="rbody">${esc(s.sub)}</div>`:""}
+      </div></div>`;}).join("")}</div>`
+  :`<div class="empty">No scenes yet.</div>`}`;
+}
+
+/* CHECKS */
+function runChecks(){
+  try{
+  const flags=[],ix=nameIndex();
+  const scan=(text,where)=>((String(text||"").match(/\[\[([^\]]+)\]\]/g))||[]).forEach(raw=>{
+    const nm=raw.slice(2,-2).trim();
+    if(!ix[nm.toLowerCase()])
+      flags.push({lvl:"warn",t:`“${nm}” doesn't exist yet`,d:`Something links to this name, but nothing in the cast matches it.`,w:where});
+  });
+  S.entries.forEach(e=>scan(e.body,`Lore · ${e.title}`));
+  S.scenes.forEach(s=>(s.beats||[]).forEach(b=>scan((b.action||"")+" "+(b.note||""),`Scene · ${s.title}`)));
+  S.entities.forEach(e=>(e.fields||[]).forEach(f=>scan(f.value,`${e.name} · ${f.label}`)));
+
+  S.events.forEach(v=>{
+    if(!v.lane)return;
+    const e=S.entities.find(x=>x.id===v.lane);if(!e)return;
+    const st=(e.lifespan||{})[v.era];
+    if(st==="dead")flags.push({lvl:"bad",t:`${e.name} appears after dying`,d:`“${v.title}” sits in an era where ${e.name} is marked gone.`,w:`Timeline · ${v.era}`});
+    if(st==="none")flags.push({lvl:"warn",t:`${e.name} appears too early`,d:`“${v.title}” sits in an era where ${e.name} isn't present yet.`,w:`Timeline · ${v.era}`});
+  });
+  S.events.forEach(v=>(v.participants||[]).forEach(pid=>{
+    const e=S.entities.find(x=>x.id===pid);if(!e)return;
+    const st=(e.lifespan||{})[v.era];
+    if(st==="dead"||st==="none")
+      flags.push({lvl:"bad",t:`${e.name} can't be in “${v.title}”`,d:`Listed as present, but marked ${st==="dead"?"gone":"not yet born"} in that era.`,w:`Timeline · ${v.era}`});
+  }));
+  S.entities.forEach(e=>{
+    let died=null;
+    S.eras.forEach(era=>{
+      const st=(e.lifespan||{})[era.key];
+      if(st==="dead"&&!died)died=era.name;
+      if(died&&st==="alive")
+        flags.push({lvl:"bad",t:`${e.name} is alive again`,d:`Marked gone in ${died}, then alive in ${era.name}. Use “stasis” if that's intended.`,w:`Cast · ${e.name}`});
+    });
+  });
+  S.entities.forEach(e=>{
+    const used=S.events.some(v=>v.lane===e.id||(v.participants||[]).includes(e.id))||
+      S.entries.some(x=>x.entity_id===e.id||(x.body||"").toLowerCase().includes(`[[${e.name.toLowerCase()}]]`));
+    if(!used)flags.push({lvl:"note",t:`${e.name} isn't connected to anything`,d:`Not on the timeline, not linked from any entry.`,w:`Cast · ${e.name}`});
+  });
+  const seen={};
+  S.entities.forEach(e=>{if(!e||!e.name)return;const k=String(e.name).toLowerCase();
+    if(seen[k])flags.push({lvl:"warn",t:`Two entries named ${e.name}`,d:`Links can't tell them apart. Rename one, or fold them together.`,w:"Cast"});
+    seen[k]=1;});
+  return flags;
+  }catch(err){console.error("checks failed",err);return [];}
+}
+function viewChecks(){
+  const f=runChecks(),bad=f.filter(x=>x.lvl==="bad"),warn=f.filter(x=>x.lvl==="warn"),note=f.filter(x=>x.lvl==="note");
+  const card=x=>`<div class="flag ${x.lvl==="warn"?"warn":x.lvl==="note"?"note":""}">
+    <h4>${esc(x.t)}</h4><p>${esc(x.d)}</p><div class="at">${esc(x.w)}</div></div>`;
+  if(!f.length)return `<p class="lede">The bible reads itself against your own rules — lifespans, links, who could have been in the room.</p>
+    <div class="flag note"><h4>Nothing contradicts.</h4><p>Every link resolves, and no one turns up where they can't be.</p></div>`;
+  return `<p class="lede">The bible reads itself against your own rules — lifespans, links, who could have been in the room.</p>
+    ${bad.length?`<div class="secthd" style="color:var(--alarm)">Contradictions · ${bad.length}</div>${bad.map(card).join("")}`:""}
+    ${warn.length?`<div class="secthd" style="color:var(--warm)">Worth a look · ${warn.length}</div>${warn.map(card).join("")}`:""}
+    ${note.length?`<div class="secthd" style="color:var(--faint)">Loose ends · ${note.length}</div>${note.map(card).join("")}`:""}`;
+}
+
+/* ── panel ────────────────────────────── */
+function closePanel(){S.sel=null;S.editing=false;document.getElementById("panel").classList.remove("open");}
+function paint(html){const p=document.getElementById("panel");p.innerHTML=html;p.classList.add("open");p.scrollTop=0;}
+const head=(actions)=>`<div class="phd"><div class="eyebrow">${actions.label}</div>
+  <div style="display:flex;gap:8px">${actions.btns}</div></div>`;
+
+/* read views */
+function openEntity(id){
+  const e=S.entities.find(x=>x.id===id);if(!e)return;
+  S.sel={t:"entities",id};S.editing=false;
+  paint(head({label:e.type||"cast",btns:`<button class="mini" onclick="editEntity('${id}')">Edit</button>
+    <button class="mini" onclick="closePanel()">Close</button>`})+`
+    <div class="ptitle" style="color:${e.color||"var(--bone)"}">${esc(e.name)}</div>
+    <div class="psub">${(e.aliases||[]).length?esc(e.aliases.join(" · ")):esc(e.type||"")}</div>
+    ${e.summary?`<div class="prose">${linkify(e.summary)}</div>`:""}
+    ${(e.fields||[]).length?`<dl>${e.fields.map(f=>`<div class="fld">
+      <dt>${esc(f.label||"")}</dt><dd>${linkify(f.value||"")}</dd></div>`).join("")}</dl>`
+      :`<div class="empty" style="text-align:left;padding:30px 0">Nothing written about them yet.</div>`}`);
+}
+function openEntry(id){
+  const e=S.entries.find(x=>x.id===id);if(!e)return;
+  S.sel={t:"entries",id};S.editing=false;
+  const owner=e.entity_id?S.entities.find(x=>x.id===e.entity_id):null;
+  paint(head({label:e.category||"lore",btns:`<button class="mini" onclick="editEntry('${id}')">Edit</button>
+    <button class="mini" onclick="closePanel()">Close</button>`})+`
+    <div class="ptitle">${esc(e.title)}</div>
+    <div class="psub">${esc(e.tag||"")}${owner?` · <span class="lk" onclick="openEntity('${owner.id}')">${esc(owner.name)}</span>`:""}</div>
+    <div class="prose">${linkify(e.body||"")}</div>`);
+}
+function openScene(id){
+  const s=S.scenes.find(x=>x.id===id);if(!s)return;
+  S.sel={t:"scenes",id};S.editing=false;
+  paint(head({label:s.status||"scene",btns:`<button class="mini" onclick="editScene('${id}')">Edit</button>
+    <button class="mini" onclick="closePanel()">Close</button>`})+`
+    <div class="ptitle">${esc(s.title)}</div>
+    <div class="psub">${esc(s.chapter||"")}</div>
+    ${s.sub?`<div class="prose" style="margin-bottom:18px">${linkify(s.sub)}</div>`:""}
+    ${(s.beats||[]).map(b=>`<div class="beat">
+      <div class="bl">${esc(b.label||"beat")}</div>
+      ${b.title?`<div class="bt">${esc(b.title)}</div>`:""}
+      ${b.action?`<div class="ba">${linkify(b.action)}</div>`:""}
+      ${b.note?`<div class="bn">${linkify(b.note)}</div>`:""}
+    </div>`).join("")||`<div class="empty" style="text-align:left">No beats yet.</div>`}`);
+}
+function openEvent(id){
+  const v=S.events.find(x=>x.id===id);if(!v)return;
+  S.sel={t:"events",id};S.editing=false;
+  const lane=S.entities.find(x=>x.id===v.lane),era=S.eras.find(x=>x.key===v.era);
+  const others=(v.participants||[]).map(p=>S.entities.find(x=>x.id===p)).filter(Boolean);
+  paint(head({label:v.status||"event",btns:`<button class="mini" onclick="editEvent('${id}')">Edit</button>
+    <button class="mini" onclick="closePanel()">Close</button>`})+`
+    <div class="ptitle">${esc(v.title)}</div>
+    <div class="psub">${esc(era?era.name:v.era||"")}${lane?` · <span class="lk" onclick="openEntity('${lane.id}')">${esc(lane.name)}</span>`:""}</div>
+    <div class="prose">${linkify(v.description||"")}</div>
+    ${others.length?`<div class="fld"><dt>Also present</dt><dd>${others.map(o=>
+      `<span class="lk" onclick="openEntity('${o.id}')">${esc(o.name)}</span>`).join(" · ")}</dd></div>`:""}`);
+}
+
+/* edit views */
+const editBtns=`<button class="mini go" onclick="commit()">Save</button><button class="mini" onclick="closePanel()">Cancel</button>`;
+
+function editEntity(id){
+  const e=id?S.entities.find(x=>x.id===id)
+    :{id:uid(),project_id:S.project.id,name:"",type:"person",aliases:[],color:"#8fa3b8",summary:"",lifespan:{},fields:[],sort:S.entities.length};
+  S.sel={t:"entities",o:JSON.parse(JSON.stringify(e))};drawEntity();
+}
+function drawEntity(){
+  const e=S.sel.o;
+  paint(head({label:"edit cast",btns:editBtns})+`
+    <label class="f">Name</label><input class="inp" value="${esc(e.name)}" oninput="S.sel.o.name=this.value">
+    <label class="f">Type</label>
+    <div class="chips">${TYPES.map(t=>`<button class="chip ${e.type===t?"on":""}" onclick="S.sel.o.type='${t}';drawEntity()">${t}</button>`).join("")}</div>
+    <div class="two">
+      <div><label class="f">Colour</label><input class="inp" type="color" value="${e.color||"#8fa3b8"}" oninput="S.sel.o.color=this.value"></div>
+      <div><label class="f">Also known as</label><input class="inp" value="${esc((e.aliases||[]).join(", "))}" placeholder="comma separated" oninput="S.sel.o.aliases=this.value.split(',').map(s=>s.trim()).filter(Boolean)"></div>
+    </div>
+    <label class="f">One line</label><input class="inp" value="${esc(e.summary||"")}" oninput="S.sel.o.summary=this.value">
+    <label class="f">Where they are, era by era</label>
+    ${S.eras.length?S.eras.map(era=>`<div class="lifegrid"><span>${esc(era.name)}</span>
+      <select onchange="S.sel.o.lifespan['${era.key}']=this.value">
+        ${LIFE_STATES.map(v=>`<option value="${v}"${(e.lifespan||{})[era.key]===v?" selected":""}>${v}</option>`).join("")}
+      </select></div>`).join(""):`<div style="font-size:13px;color:var(--faint)">Add eras first.</div>`}
+    <label class="f">Fields</label>
+    ${(e.fields||[]).map((f,i)=>`<div class="fr"><div style="flex:1">
+      <input class="inp" style="margin-bottom:6px" placeholder="Label" value="${esc(f.label||"")}" oninput="S.sel.o.fields[${i}].label=this.value">
+      <textarea class="inp" placeholder="Write here — use [[Name]] to link" oninput="S.sel.o.fields[${i}].value=this.value">${esc(f.value||"")}</textarea>
+    </div><button class="x" onclick="S.sel.o.fields.splice(${i},1);drawEntity()">✕</button></div>`).join("")}
+    <button class="mini" onclick="S.sel.o.fields.push({label:'',value:''});drawEntity()">Add field</button>
+    ${e.name?`<div style="margin-top:28px"><button class="mini kill" style="width:100%;padding:11px" onclick="del()">Delete ${esc(e.name)}</button></div>`:""}`);
+}
+
+function editEntry(id){
+  const e=id?S.entries.find(x=>x.id===id)
+    :{id:uid(),project_id:S.project.id,title:"",tag:"",body:"",category:S.cat||"",entity_id:null,sort:S.entries.length};
+  S.sel={t:"entries",o:JSON.parse(JSON.stringify(e))};
+  paint(head({label:"edit lore",btns:editBtns})+`
+    <label class="f">Title</label><input class="inp" value="${esc(e.title)}" oninput="S.sel.o.title=this.value">
+    <div class="two">
+      <div><label class="f">Category</label><input class="inp" value="${esc(e.category||"")}" oninput="S.sel.o.category=this.value"></div>
+      <div><label class="f">Tag</label><input class="inp" value="${esc(e.tag||"")}" oninput="S.sel.o.tag=this.value"></div>
+    </div>
+    <label class="f">About</label>
+    <select class="inp" onchange="S.sel.o.entity_id=this.value||null">
+      <option value="">nobody in particular</option>
+      ${S.entities.map(x=>`<option value="${x.id}"${e.entity_id===x.id?" selected":""}>${esc(x.name)}</option>`).join("")}
+    </select>
+    <label class="f">Body — [[Name]] makes a link</label>
+    <textarea class="inp" style="min-height:340px" oninput="S.sel.o.body=this.value">${esc(e.body||"")}</textarea>
+    ${e.title?`<div style="margin-top:28px"><button class="mini kill" style="width:100%;padding:11px" onclick="del()">Delete this entry</button></div>`:""}`);
+}
+
+function editEvent(id,lane,era){
+  const e=id?S.events.find(x=>x.id===id)
+    :{id:uid(),project_id:S.project.id,title:"",description:"",status:"draft",era,lane,participants:[],sort:S.events.length};
+  S.sel={t:"events",o:JSON.parse(JSON.stringify(e))};drawEvent();
+}
+function drawEvent(){
+  const e=S.sel.o;
+  paint(head({label:"edit event",btns:editBtns})+`
+    <label class="f">Title</label><input class="inp" value="${esc(e.title)}" oninput="S.sel.o.title=this.value">
+    <label class="f">What happens</label>
+    <textarea class="inp" style="min-height:150px" oninput="S.sel.o.description=this.value">${esc(e.description||"")}</textarea>
+    <div class="two">
+      <div><label class="f">Track</label><select class="inp" onchange="S.sel.o.lane=this.value">
+        ${S.entities.map(x=>`<option value="${x.id}"${e.lane===x.id?" selected":""}>${esc(x.name)}</option>`).join("")}</select></div>
+      <div><label class="f">Era</label><select class="inp" onchange="S.sel.o.era=this.value">
+        ${S.eras.map(x=>`<option value="${x.key}"${e.era===x.key?" selected":""}>${esc(x.name)}</option>`).join("")}</select></div>
+    </div>
+    <label class="f">Status</label>
+    <div class="chips">${Object.entries(STATUS).map(([k,v])=>`<button class="chip ${e.status===k?"on":""}" onclick="S.sel.o.status='${k}';drawEvent()">${v.l}</button>`).join("")}</div>
+    <label class="f">Also present</label>
+    <div class="chips">${S.entities.filter(x=>x.id!==e.lane).map(x=>
+      `<button class="chip ${(e.participants||[]).includes(x.id)?"on":""}" onclick="togglePart('${x.id}')">${esc(x.name)}</button>`).join("")}</div>
+    ${e.title?`<div style="margin-top:28px"><button class="mini kill" style="width:100%;padding:11px" onclick="del()">Delete this event</button></div>`:""}`);
+}
+function togglePart(id){
+  const p=S.sel.o.participants||[];
+  S.sel.o.participants=p.includes(id)?p.filter(x=>x!==id):[...p,id];drawEvent();
+}
+
+function editScene(id){
+  const s=id?S.scenes.find(x=>x.id===id)
+    :{id:uid(),project_id:S.project.id,chapter:"",title:"",sub:"",status:"draft",beats:[],sort:S.scenes.length};
+  S.sel={t:"scenes",o:JSON.parse(JSON.stringify(s))};drawScene();
+}
+function drawScene(){
+  const s=S.sel.o;
+  paint(head({label:"edit scene",btns:editBtns})+`
+    <label class="f">Where it sits</label><input class="inp" value="${esc(s.chapter||"")}" oninput="S.sel.o.chapter=this.value">
+    <label class="f">Title</label><input class="inp" value="${esc(s.title)}" oninput="S.sel.o.title=this.value">
+    <label class="f">In one breath</label><textarea class="inp" oninput="S.sel.o.sub=this.value">${esc(s.sub||"")}</textarea>
+    <label class="f">Status</label>
+    <div class="chips">${Object.entries(STATUS).map(([k,v])=>`<button class="chip ${s.status===k?"on":""}" onclick="S.sel.o.status='${k}';drawScene()">${v.l}</button>`).join("")}</div>
+    <label class="f">Beats</label>
+    ${(s.beats||[]).map((b,i)=>`<div style="border-top:1px solid var(--rule);padding:14px 0">
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <input class="inp" style="width:88px" placeholder="Label" value="${esc(b.label||"")}" oninput="S.sel.o.beats[${i}].label=this.value">
+        <input class="inp" style="flex:1" placeholder="Title" value="${esc(b.title||"")}" oninput="S.sel.o.beats[${i}].title=this.value">
+        <button class="x" onclick="S.sel.o.beats.splice(${i},1);drawScene()">✕</button>
+      </div>
+      <textarea class="inp" style="margin-bottom:8px" placeholder="What happens" oninput="S.sel.o.beats[${i}].action=this.value">${esc(b.action||"")}</textarea>
+      <textarea class="inp" placeholder="Why it matters" oninput="S.sel.o.beats[${i}].note=this.value">${esc(b.note||"")}</textarea>
+    </div>`).join("")}
+    <button class="mini" onclick="S.sel.o.beats.push({label:'Beat',title:'',action:'',note:''});drawScene()">Add beat</button>
+    ${s.title?`<div style="margin-top:28px"><button class="mini kill" style="width:100%;padding:11px" onclick="del()">Delete this scene</button></div>`:""}`);
+}
+
+function editEra(id){
+  const e=id?S.eras.find(x=>x.id===id)
+    :{id:uid(),project_id:S.project.id,key:"",name:"",range_label:"",duration:"",color:"#4a5d8f",compressed:false,sort:S.eras.length};
+  S.sel={t:"eras",o:JSON.parse(JSON.stringify(e))};drawEra();
+}
+function drawEra(){
+  const e=S.sel.o;
+  paint(head({label:"edit era",btns:editBtns})+`
+    <label class="f">Name</label><input class="inp" value="${esc(e.name)}" oninput="S.sel.o.name=this.value">
+    <label class="f">Short key — no spaces, used internally</label>
+    <input class="inp" value="${esc(e.key)}" oninput="S.sel.o.key=this.value.replace(/\\s/g,'')">
+    <div class="two">
+      <div><label class="f">Range</label><input class="inp" value="${esc(e.range_label||"")}" oninput="S.sel.o.range_label=this.value"></div>
+      <div><label class="f">Duration</label><input class="inp" value="${esc(e.duration||"")}" oninput="S.sel.o.duration=this.value"></div>
+    </div>
+    <div class="two">
+      <div><label class="f">Colour</label><input class="inp" type="color" value="${e.color||"#4a5d8f"}" oninput="S.sel.o.color=this.value"></div>
+      <div><label class="f">Compressed on the page?</label><div class="chips" style="margin-top:6px">
+        <button class="chip ${!e.compressed?"on":""}" onclick="S.sel.o.compressed=false;drawEra()">no</button>
+        <button class="chip ${e.compressed?"on":""}" onclick="S.sel.o.compressed=true;drawEra()">yes</button>
+      </div></div>
+    </div>
+    ${e.name?`<div style="margin-top:28px"><button class="mini kill" style="width:100%;padding:11px" onclick="del()">Delete this era</button></div>`:""}`);
+}
+
+async function commit(){
+  if(!S.sel||!S.sel.o)return;
+  const{t,o}=S.sel,saved=await save(t,o);
+  if(saved){
+    const a=S[t],i=a.findIndex(x=>x.id===saved.id);
+    if(i>=0)a[i]=saved;else a.push(saved);
+    closePanel();render();
+  }
+}
+async function del(){
+  if(!S.sel||!S.sel.o)return;
+  if(!confirm("Delete this for good?"))return;
+  const{t,o}=S.sel;
+  if(await remove(t,o.id)){S[t]=S[t].filter(x=>x.id!==o.id);closePanel();render();}
+}
+
+/* ── import / export ──────────────────── */
+function exportAll(){
+  const out={project:S.project,eras:S.eras,entities:S.entities,entries:S.entries,events:S.events,scenes:S.scenes};
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(out,null,2)],{type:"application/json"}));
+  a.download=(S.project?.name||"bible").replace(/\W+/g,"_")+".json";a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+async function importAll(){
+  const inp=document.createElement("input");inp.type="file";inp.accept=".json,application/json";
+  inp.onchange=async()=>{
+    const f=inp.files[0];if(!f)return;
+    let data;try{data=JSON.parse(await f.text());}catch(e){alert("That file isn't readable JSON.");return;}
+    if(!S.project){alert("Pick a project first.");return;}
+    const pid=S.project.id;
+    const n=["eras","entities","entries","events","scenes"].reduce((a,k)=>a+((data[k]||[]).length),0);
+    if(!confirm(`Bring ${n} records into “${S.project.name}”?\n\nAnything with a matching id is replaced. Everything else stays.`))return;
+    try{
+      for(const t of ["eras","entities","events","entries","scenes"]){
+        const rows=data[t];if(!rows||!rows.length)continue;
+        setStatus("importing "+t,"busy");
+        const stamped=rows.map(r=>({...r,project_id:pid}));
+        for(let i=0;i<stamped.length;i+=50){
+          const{error}=await db.from(t).upsert(stamped.slice(i,i+50));
+          if(error)throw new Error(t+": "+error.message);
+        }
+      }
+      setStatus("imported","ok");await loadProject();
+    }catch(e){console.error(e);setStatus("import failed","err");alert("Import stopped:\n\n"+e.message);}
+  };
+  inp.click();
+}
+
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closePanel();});
+boot();
+</script>
+</body>
+</html>
